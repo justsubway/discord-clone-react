@@ -34,76 +34,6 @@ const triggerProfileUpdate = () => {
     profileUpdateListeners.forEach(callback => callback());
 };
 
-// Global compress image function with performance optimizations
-const compressImage = (file, maxWidth, maxHeight, quality) => {
-    return new Promise((resolve, reject) => {
-        // Validate file type
-        if (!file.type.startsWith('image/')) {
-            reject(new Error('File is not an image'));
-            return;
-        }
-        
-        // Check file size (max 10MB)
-        if (file.size > 10 * 1024 * 1024) {
-            reject(new Error('File is too large (max 10MB)'));
-            return;
-        }
-        
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        const img = new Image();
-        
-        img.onload = () => {
-            try {
-                // Calculate new dimensions with better aspect ratio handling
-                let { width, height } = img;
-                const aspectRatio = width / height;
-                
-                if (width > height) {
-                    if (width > maxWidth) {
-                        width = maxWidth;
-                        height = width / aspectRatio;
-                    }
-                } else {
-                    if (height > maxHeight) {
-                        height = maxHeight;
-                        width = height * aspectRatio;
-                    }
-                }
-                
-                // Ensure minimum dimensions
-                width = Math.max(width, 32);
-                height = Math.max(height, 32);
-                
-                canvas.width = width;
-                canvas.height = height;
-                
-                // Use better image rendering
-                ctx.imageSmoothingEnabled = true;
-                ctx.imageSmoothingQuality = 'high';
-                
-                // Draw and compress
-                ctx.drawImage(img, 0, 0, width, height);
-                const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
-                
-                // Clean up
-                URL.revokeObjectURL(img.src);
-                
-                resolve(compressedDataUrl);
-            } catch (error) {
-                reject(error);
-            }
-        };
-        
-        img.onerror = () => {
-            URL.revokeObjectURL(img.src);
-            reject(new Error('Failed to load image'));
-        };
-        
-        img.src = URL.createObjectURL(file);
-    });
-};
-
 // Role system - Secure role assignment based on Firebase UID
 const ROLE_SYSTEM = {
     // Admin UIDs - Add your Firebase UIDs here for admin access
@@ -170,7 +100,6 @@ const saveUserToFirestore = async (user, additionalData = {}) => {
         }
         
         const userRef = firestore.collection('users').doc(documentId);
-        const profileRef = firestore.collection('userProfiles').doc(documentId);
         const userRole = getUserRole(user);
         const userData = {
             uid: user.uid,
@@ -188,9 +117,7 @@ const saveUserToFirestore = async (user, additionalData = {}) => {
             ...additionalData
         };
         
-        // Save to both collections for compatibility
         await userRef.set(userData, { merge: true });
-        await profileRef.set(userData, { merge: true });
         console.log('User saved to Firestore:', documentId);
     } catch (error) {
         console.error('Error saving user to Firestore:', error);
@@ -332,7 +259,6 @@ function SignIn() {
 }
 
 function DiscordLayout() {
-    const [selectedServer, setSelectedServer] = useState(null);
     const [selectedChannel, setSelectedChannel] = useState(null);
     const [unreadChannels, setUnreadChannels] = useState(new Set());
     const [mentionedChannels, setMentionedChannels] = useState(new Set());
@@ -340,37 +266,20 @@ function DiscordLayout() {
     const [showProfileModal, setShowProfileModal] = useState(false);
     const [showUserPreview, setShowUserPreview] = useState(null);
     const [previewPosition, setPreviewPosition] = useState({ x: 0, y: 0 });
-    const [members, setMembers] = useState([]);
-    const [channels, setChannels] = useState([]); // Start with no channels
-    const [channelsLoaded, setChannelsLoaded] = useState(false);
-    const [showCreateChannel, setShowCreateChannel] = useState(false);
-    const [newChannelName, setNewChannelName] = useState('');
-    const [newChannelCategory, setNewChannelCategory] = useState('General');
-    const [showCreateCategory, setShowCreateCategory] = useState(false);
-    const [newCategoryName, setNewCategoryName] = useState('');
-    const [categories, setCategories] = useState(['General', 'Gaming', 'Music', 'Art']);
-    
-    // Server-related state
-    const [servers, setServers] = useState([]);
-    const [showCreateServer, setShowCreateServer] = useState(false);
-    const [newServerName, setNewServerName] = useState('');
-    const [newServerDescription, setNewServerDescription] = useState('');
-    const [showServerContextMenu, setShowServerContextMenu] = useState(null);
-    const [selectedServerId, setSelectedServerId] = useState(null);
-    const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
-    const [showChannelContextMenu, setShowChannelContextMenu] = useState(false);
-    const [selectedChannelName, setSelectedChannelName] = useState(null);
-    const [channelContextPosition, setChannelContextPosition] = useState({ x: 0, y: 0 });
-    const [draggedChannel, setDraggedChannel] = useState(null);
-    const [editingChannel, setEditingChannel] = useState(null);
-    const [editingChannelName, setEditingChannelName] = useState('');
-    const [showServerIconModal, setShowServerIconModal] = useState(false);
-    const [newServerIcon, setNewServerIcon] = useState('');
+      const [members, setMembers] = useState([]);
+      const [channels, setChannels] = useState([]); // Start with no channels
+      const [channelsLoaded, setChannelsLoaded] = useState(false);
+      const [showCreateChannel, setShowCreateChannel] = useState(false);
+      const [newChannelName, setNewChannelName] = useState('');
+      const [newChannelCategory, setNewChannelCategory] = useState('General');
+      const [showCreateCategory, setShowCreateCategory] = useState(false);
+      const [newCategoryName, setNewCategoryName] = useState('');
+      const [categories, setCategories] = useState(['General', 'Gaming', 'Music', 'Art']);
     
     // Function to get the correct avatar for a member
     const getMemberAvatar = (member) => {
-        // First check if member has a photoURL
-        if (member.photoURL && member.photoURL !== '') {
+        // First check if member has a valid photoURL (not empty string)
+        if (member.photoURL && member.photoURL.trim() !== '') {
             return member.photoURL;
         }
         
@@ -383,87 +292,10 @@ function DiscordLayout() {
         return 'https://api.adorable.io/avatars/32/abott@adorable.png';
     };
 
-    // Create the initial SuperChat server if it doesn't exist
-    const createInitialServer = async () => {
-        try {
-            const serversRef = firestore.collection('servers');
-            const superChatQuery = serversRef.where('name', '==', 'SuperChat Server');
-            const superChatSnapshot = await superChatQuery.get();
-            
-            if (superChatSnapshot.empty) {
-                // Create the initial SuperChat server
-                const serverData = {
-                    name: 'SuperChat Server',
-                    description: 'The main SuperChat server where everyone can chat',
-                    ownerId: 'system',
-                    members: [], // Will be populated as users join
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                };
-
-                const serverRef = await serversRef.add(serverData);
-                
-                // Create default channels for SuperChat server
-                const defaultChannels = [
-                    { name: 'general', category: 'General' },
-                    { name: 'random', category: 'General' }
-                ];
-                
-                const channelsData = {
-                    channels: defaultChannels,
-                    categories: ['General', 'Gaming', 'Music', 'Art'],
-                    serverId: serverRef.id,
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                };
-                
-                await firestore.collection('channels').doc(serverRef.id).set(channelsData);
-                
-                console.log('Initial SuperChat server created:', serverRef.id);
-            }
-        } catch (error) {
-            console.error('Error creating initial server:', error);
-        }
-    };
-
-    // Load servers from Firestore
-    const loadServers = async () => {
-        try {
-            const serversRef = firestore.collection('servers');
-            const serversSnapshot = await serversRef.get();
-            
-            const serversData = [];
-            serversSnapshot.forEach(doc => {
-                serversData.push({
-                    id: doc.id,
-                    ...doc.data()
-                });
-            });
-            
-            // Sort servers by creation date (newest first)
-            serversData.sort((a, b) => b.createdAt?.toDate() - a.createdAt?.toDate());
-            
-            setServers(serversData);
-            
-            // If no server is selected and we have servers, select the first one
-            if (!selectedServer && serversData.length > 0) {
-                setSelectedServer(serversData[0]);
-            }
-        } catch (error) {
-            console.error('Error loading servers:', error);
-        }
-    };
-
-    // Load channels from Firestore for the selected server
+    // Load channels from Firestore
     const loadChannels = async () => {
-        if (!selectedServer) {
-            setChannels([]);
-            setChannelsLoaded(true);
-            return;
-        }
-        
         try {
-            const channelsRef = firestore.collection('channels').doc(selectedServer.id);
+            const channelsRef = firestore.collection('channels').doc('main');
             const channelsDoc = await channelsRef.get();
             
             if (channelsDoc.exists) {
@@ -471,12 +303,11 @@ function DiscordLayout() {
                 setChannels(channelsData.channels || []);
                 setCategories(channelsData.categories || ['General', 'Gaming', 'Music', 'Art']);
             } else {
-                // Create empty channels document for this server
+                // Create empty channels document
                 const defaultCategories = ['General', 'Gaming', 'Music', 'Art'];
                 await channelsRef.set({
                     channels: [],
                     categories: defaultCategories,
-                    serverId: selectedServer.id,
                     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
@@ -490,258 +321,10 @@ function DiscordLayout() {
         }
     };
 
-    // Create a new server
-    const createServer = async () => {
-        if (!newServerName.trim()) {
-            alert('Please enter a server name');
-            return;
-        }
-
-        try {
-            const serverData = {
-                name: newServerName.trim(),
-                description: newServerDescription.trim(),
-                ownerId: auth.currentUser?.uid || 'anonymous',
-                members: [auth.currentUser?.uid || 'anonymous'], // Auto-add creator
-                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            };
-
-            const serverRef = await firestore.collection('servers').add(serverData);
-            
-            // Create default channels for the new server
-            const defaultChannels = [
-                { name: 'general', category: 'General' },
-                { name: 'random', category: 'General' }
-            ];
-            
-            const channelsData = {
-                channels: defaultChannels,
-                categories: ['General', 'Gaming', 'Music', 'Art'],
-                serverId: serverRef.id,
-                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            };
-            
-            await firestore.collection('channels').doc(serverRef.id).set(channelsData);
-            
-            // Reset form
-            setNewServerName('');
-            setNewServerDescription('');
-            setShowCreateServer(false);
-            
-            // Reload servers
-            await loadServers();
-            
-            console.log('Server created successfully:', serverRef.id);
-        } catch (error) {
-            console.error('Error creating server:', error);
-            alert('Error creating server. Please try again.');
-        }
-    };
-
-    // Delete a server
-    const deleteServer = async (serverId) => {
-        if (!window.confirm('Are you sure you want to delete this server? This action cannot be undone.')) {
-            return;
-        }
-
-        try {
-            // Delete server
-            await firestore.collection('servers').doc(serverId).delete();
-            
-            // Delete server channels
-            await firestore.collection('channels').doc(serverId).delete();
-            
-            // Delete all messages in this server
-            const messagesRef = firestore.collection('messages');
-            const serverMessagesQuery = messagesRef.where('serverId', '==', serverId);
-            const serverMessagesSnapshot = await serverMessagesQuery.get();
-            
-            const batch = firestore.batch();
-            serverMessagesSnapshot.docs.forEach(doc => {
-                batch.delete(doc.ref);
-            });
-            await batch.commit();
-            
-            // If this was the selected server, switch to another one
-            if (selectedServer?.id === serverId) {
-                const remainingServers = servers.filter(s => s.id !== serverId);
-                if (remainingServers.length > 0) {
-                    setSelectedServer(remainingServers[0]);
-                } else {
-                    setSelectedServer(null);
-                }
-            }
-            
-            // Reload servers
-            await loadServers();
-            
-            console.log('Server deleted successfully:', serverId);
-        } catch (error) {
-            console.error('Error deleting server:', error);
-            alert('Error deleting server. Please try again.');
-        }
-    };
-
-    // Handle channel drag start
-    const handleChannelDragStart = (e, channel) => {
-        setDraggedChannel(channel);
-        e.dataTransfer.effectAllowed = 'move';
-    };
-
-    // Handle channel drag over
-    const handleChannelDragOver = (e) => {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
-    };
-
-    // Handle channel drop
-    const handleChannelDrop = async (e, targetCategory) => {
-        e.preventDefault();
-        
-        if (!draggedChannel || !selectedServer) return;
-        
-        // Don't move if it's already in the same category
-        if (draggedChannel.category === targetCategory) {
-            setDraggedChannel(null);
-            return;
-        }
-        
-        try {
-            // Update channel category
-            const updatedChannels = channels.map(channel => 
-                channel.name === draggedChannel.name 
-                    ? { ...channel, category: targetCategory }
-                    : channel
-            );
-            
-            setChannels(updatedChannels);
-            await saveChannels(updatedChannels);
-            
-            console.log(`Moved channel ${draggedChannel.name} to ${targetCategory}`);
-        } catch (error) {
-            console.error('Error moving channel:', error);
-            alert('Error moving channel. Please try again.');
-        } finally {
-            setDraggedChannel(null);
-        }
-    };
-
-    // Handle channel rename
-    const handleChannelRename = async (channelName, newName) => {
-        if (!newName.trim() || newName.trim() === channelName) {
-            setEditingChannel(null);
-            setEditingChannelName('');
-            return;
-        }
-        
-        try {
-            // Update channel name
-            const updatedChannels = channels.map(channel => 
-                channel.name === channelName 
-                    ? { ...channel, name: newName.trim() }
-                    : channel
-            );
-            
-            setChannels(updatedChannels);
-            await saveChannels(updatedChannels);
-            
-            // If this was the selected channel, update it
-            if (selectedChannel === channelName) {
-                setSelectedChannel(newName.trim());
-            }
-            
-            setEditingChannel(null);
-            setEditingChannelName('');
-            
-            console.log(`Renamed channel ${channelName} to ${newName.trim()}`);
-        } catch (error) {
-            console.error('Error renaming channel:', error);
-            alert('Error renaming channel. Please try again.');
-        }
-    };
-
-    // Handle channel deletion
-    const deleteChannel = async (channelName) => {
-        if (!hasPermission(auth.currentUser, 'delete_channels')) {
-            alert('You do not have permission to delete channels.');
-            return;
-        }
-
-        if (!window.confirm(`Are you sure you want to delete the channel "#${channelName}"? This action cannot be undone.`)) {
-            return;
-        }
-
-        try {
-            // Remove channel from channels array
-            const updatedChannels = channels.filter(channel => channel.name !== channelName);
-            setChannels(updatedChannels);
-            await saveChannels(updatedChannels);
-            
-            // If this was the selected channel, switch to general
-            if (selectedChannel === channelName) {
-                setSelectedChannel('general');
-            }
-            
-            console.log(`Deleted channel: ${channelName}`);
-        } catch (error) {
-            console.error('Error deleting channel:', error);
-            alert('Error deleting channel. Please try again.');
-        }
-    };
-
-    // Handle channel context menu actions
-    const handleChannelContextAction = (action) => {
-        if (!selectedChannelName) return;
-        
-        setShowChannelContextMenu(false);
-        
-        if (action === 'rename') {
-            setEditingChannel(selectedChannelName);
-            setEditingChannelName(selectedChannelName);
-        } else if (action === 'delete') {
-            deleteChannel(selectedChannelName);
-        }
-    };
-
-
-    // Handle server icon change
-    const handleServerIconChange = async (serverId, newIcon) => {
-        if (!newIcon.trim()) {
-            alert('Please enter an icon');
-            return;
-        }
-        
-        try {
-            await firestore.collection('servers').doc(serverId).update({
-                icon: newIcon.trim(),
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
-            
-            // Update local state
-            setServers(prev => prev.map(server => 
-                server.id === serverId 
-                    ? { ...server, icon: newIcon.trim() }
-                    : server
-            ));
-            
-            setNewServerIcon('');
-            setShowServerIconModal(false);
-            
-            console.log(`Updated server icon to ${newIcon.trim()}`);
-        } catch (error) {
-            console.error('Error updating server icon:', error);
-            alert('Error updating server icon. Please try again.');
-        }
-    };
-
     // Save channels to Firestore
     const saveChannels = async (newChannels, newCategories = null) => {
-        if (!selectedServer) return;
-        
         try {
-            const channelsRef = firestore.collection('channels').doc(selectedServer.id);
+            const channelsRef = firestore.collection('channels').doc('main');
             const updateData = {
                 channels: newChannels,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -758,17 +341,13 @@ function DiscordLayout() {
     
     // Track unread messages and mentions - use a separate query to avoid conflicts
     const messagesRef = firestore.collection('messages');
-    const indicatorQuery = selectedServer 
-        ? messagesRef.where('serverId', '==', selectedServer.id).orderBy('createdAt', 'desc').limit(100)
-        : messagesRef.orderBy('createdAt', 'desc').limit(100);
+    const indicatorQuery = messagesRef.orderBy('createdAt', 'desc').limit(100);
     const [indicatorSnapshot] = useCollection(indicatorQuery);
     
-    const indicatorMessages = React.useMemo(() => {
-        return indicatorSnapshot?.docs.map(doc => ({
+    const indicatorMessages = indicatorSnapshot?.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
     })) || [];
-    }, [indicatorSnapshot]);
     
     // Mark channel as read when switching to it
     React.useEffect(() => {
@@ -795,18 +374,22 @@ function DiscordLayout() {
     }, [selectedChannel]);
 
     // Track when each channel was last visited to determine if there are new messages
-    const channelLastVisitedRef = useRef(new Map());
+    const [channelLastVisited, setChannelLastVisited] = useState(new Map());
     
     // Update last visited time when switching channels
     React.useEffect(() => {
         if (selectedChannel) {
-            channelLastVisitedRef.current.set(selectedChannel, Date.now());
+            setChannelLastVisited(prev => {
+                const newMap = new Map(prev);
+                newMap.set(selectedChannel, Date.now());
+                return newMap;
+            });
         }
     }, [selectedChannel]);
 
     // Check for mentions and unread messages
     React.useEffect(() => {
-        if (!indicatorMessages || !auth.currentUser || indicatorMessages.length === 0) return;
+        if (!indicatorMessages || !auth.currentUser) return;
         
         const currentUser = auth.currentUser;
         const currentUserId = currentUser.uid;
@@ -827,7 +410,7 @@ function DiscordLayout() {
             if (msg.uid === currentUserId) return;
             
             // Check if this message is newer than when the channel was last visited
-            const lastVisited = channelLastVisitedRef.current.get(channel);
+            const lastVisited = channelLastVisited.get(channel);
             const isNewMessage = !lastVisited || messageTime.getTime() > lastVisited;
             
             if (isNewMessage) {
@@ -852,28 +435,19 @@ function DiscordLayout() {
             }
         });
         
-        // Only update state if there are actual changes
-        setUnreadChannels(prev => {
-            const prevArray = Array.from(prev);
-            const newArray = Array.from(newUnreadChannels);
-            if (prevArray.length !== newArray.length || !prevArray.every(item => newArray.includes(item))) {
-                return newUnreadChannels;
-            }
-            return prev;
-        });
+        // console.log('🔔 Channel indicators update:', {
+        //     unreadChannels: Array.from(newUnreadChannels),
+        //     mentionedChannels: Array.from(newMentionedChannels),
+        //     readChannels: Array.from(readChannels),
+        //     selectedChannel
+        // });
         
-        setMentionedChannels(prev => {
-            const prevArray = Array.from(prev);
-            const newArray = Array.from(newMentionedChannels);
-            if (prevArray.length !== newArray.length || !prevArray.every(item => newArray.includes(item))) {
-                return newMentionedChannels;
-            }
-            return prev;
-        });
-    }, [indicatorMessages, auth.currentUser]);
+        setUnreadChannels(newUnreadChannels);
+        setMentionedChannels(newMentionedChannels);
+    }, [indicatorMessages, channelLastVisited, auth.currentUser]);
 
     // Load all users from Firestore users collection
-    const loadAllUsers = React.useCallback(async (skipUpdates = false) => {
+    const loadAllUsers = async () => {
         try {
             const usersRef = firestore.collection('users');
             const usersSnapshot = await usersRef.get();
@@ -947,62 +521,51 @@ function DiscordLayout() {
                 return b.lastSeen.toDate() - a.lastSeen.toDate();
             });
             
-            // console.log('Loaded users:', allUsers.length, 'users');
-            // console.log('Users by role:', {
-            //     admins: allUsers.filter(u => u.role === 'Admin').length,
-            //     moderators: allUsers.filter(u => u.role === 'Moderator').length,
-            //     users: allUsers.filter(u => u.role === 'User').length,
-            //     undefined: allUsers.filter(u => !u.role || u.role === 'undefined').length
-            // });
+            console.log('Loaded users:', allUsers.length, 'users');
+            console.log('Users by role:', {
+                admins: allUsers.filter(u => u.role === 'Admin').length,
+                moderators: allUsers.filter(u => u.role === 'Moderator').length,
+                users: allUsers.filter(u => u.role === 'User').length,
+                undefined: allUsers.filter(u => !u.role || u.role === 'undefined').length
+            });
             setMembers(allUsers);
             
-            // Only update users who don't have role information if not skipping updates
-            if (!skipUpdates) {
-                const usersToUpdate = allUsers.filter(user => {
-                    const userData = usersSnapshot.docs.find(doc => doc.id === user.uniqueKey)?.data();
-                    return !userData?.role;
-                });
-                
-                if (usersToUpdate.length > 0) {
-                    console.log('Updating role information for', usersToUpdate.length, 'users');
-                    const batch = firestore.batch();
-                    usersToUpdate.forEach(user => {
-                        const userRef = firestore.collection('users').doc(user.uniqueKey);
-                        batch.update(userRef, {
-                            role: user.role,
-                            roleLevel: user.roleLevel,
-                            roleColor: user.roleColor,
-                            roleIcon: user.roleIcon,
-                            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                        });
+            // Update users who don't have role information in the database
+            const usersToUpdate = allUsers.filter(user => {
+                const userData = usersSnapshot.docs.find(doc => doc.id === user.uniqueKey)?.data();
+                return !userData?.role;
+            });
+            
+            if (usersToUpdate.length > 0) {
+                console.log('Updating role information for', usersToUpdate.length, 'users');
+                const batch = firestore.batch();
+                usersToUpdate.forEach(user => {
+                    const userRef = firestore.collection('users').doc(user.uniqueKey);
+                    batch.update(userRef, {
+                        role: user.role,
+                        roleLevel: user.roleLevel,
+                        roleColor: user.roleColor,
+                        roleIcon: user.roleIcon,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                     });
-                    await batch.commit();
-                }
+                });
+                await batch.commit();
             }
         } catch (error) {
             console.error('Error loading users:', error);
         }
-    }, []);
+    };
 
     React.useEffect(() => {
         loadAllUsers();
-        createInitialServer().then(() => {
-            loadServers();
-        });
+        loadChannels();
     }, []); // Empty dependency array - only run once
-
-    // Load channels when selected server changes
-    React.useEffect(() => {
-        if (selectedServer) {
-            loadChannels();
-        }
-    }, [selectedServer]);
 
     // Listen for profile updates
     React.useEffect(() => {
-        const unsubscribe = addProfileUpdateListener(() => loadAllUsers(true));
+        const unsubscribe = addProfileUpdateListener(loadAllUsers);
         return unsubscribe;
-    }, [loadAllUsers]);
+    }, []);
 
     // Create new channel
     const createChannel = async () => {
@@ -1049,6 +612,61 @@ function DiscordLayout() {
         }
     };
 
+    // Delete channel
+    const deleteChannel = async (channelName) => {
+        if (!hasPermission(auth.currentUser, 'delete_channels')) {
+            alert('You do not have permission to delete channels');
+            return;
+        }
+        
+        // No default channels to protect
+        
+        if (!window.confirm(`Are you sure you want to delete #${channelName}? This action cannot be undone.`)) {
+            return;
+        }
+        
+        try {
+            // Remove channel from local state
+            const newChannels = channels.filter(ch => ch.name !== channelName);
+            setChannels(newChannels);
+            
+            // Save to Firestore
+            await saveChannels(newChannels);
+            
+            // If the deleted channel was selected, clear selection
+            if (selectedChannel === channelName) {
+                setSelectedChannel(null);
+            }
+            
+            // Remove from read channels
+            setReadChannels(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(channelName);
+                return newSet;
+            });
+            
+            // Remove from unread channels
+            setUnreadChannels(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(channelName);
+                return newSet;
+            });
+            
+            // Remove from mentioned channels
+            setMentionedChannels(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(channelName);
+                return newSet;
+            });
+            
+            // TODO: In a real app, you would also delete all messages from this channel from Firestore
+            // For now, we'll just remove it from the UI
+            
+        } catch (error) {
+            console.error('Error deleting channel:', error);
+            alert('Error deleting channel');
+        }
+    };
 
     // Create new category
     const createCategory = async () => {
@@ -1075,7 +693,7 @@ function DiscordLayout() {
 
     // Also extract members from current messages as backup
     React.useEffect(() => {
-        if (!indicatorMessages || indicatorMessages.length === 0) return;
+        if (!indicatorMessages) return;
         
         const memberMap = new Map();
         indicatorMessages.forEach(msg => {
@@ -1098,18 +716,16 @@ function DiscordLayout() {
         setMembers(prev => {
             const newMembers = Array.from(memberMap.values());
             const existingMap = new Map(prev.map(member => [member.uniqueKey || member.uid, member]));
-            let hasChanges = false;
             
             // Add new members that aren't already in the list
             newMembers.forEach(member => {
                 const key = member.uniqueKey || member.uid;
                 if (!existingMap.has(key)) {
                     existingMap.set(key, member);
-                    hasChanges = true;
                 }
             });
             
-            return hasChanges ? Array.from(existingMap.values()) : prev;
+            return Array.from(existingMap.values());
         });
     }, [indicatorMessages]);
     
@@ -1117,92 +733,9 @@ function DiscordLayout() {
         <>
             {/* Server Sidebar */}
             <div className="server-sidebar">
-                {servers.map((server) => (
-                    <div 
-                        key={server.id}
-                        className={`server-icon ${selectedServer?.id === server.id ? 'active' : ''}`}
-                        onClick={() => setSelectedServer(server)}
-                        onContextMenu={(e) => {
-                            e.preventDefault();
-                            setContextMenuPosition({ x: e.clientX, y: e.clientY });
-                            setSelectedServerId(server.id);
-                            setShowServerContextMenu(true);
-                        }}
-                        title={server.name}
-                    >
-                        {server.icon ? (
-                            server.icon.startsWith('data:image') ? (
-                                <img 
-                                    src={server.icon} 
-                                    alt={server.name}
-                                    className="server-icon-image"
-                                />
-                            ) : (
-                                server.icon
-                            )
-                        ) : (
-                            server.name.charAt(0).toUpperCase()
-                        )}
-                    </div>
-                ))}
-                <div 
-                    className="server-icon add-server"
-                    onClick={() => setShowCreateServer(true)}
-                    title="Add Server"
-                >
-                    +
-                </div>
+                <div className="server-icon active">💬</div>
+                <div className="server-icon">+</div>
             </div>
-
-            {/* Server Context Menu */}
-            {showServerContextMenu && (
-                <div 
-                    className="context-menu"
-                    style={{
-                        position: 'fixed',
-                        left: contextMenuPosition.x,
-                        top: contextMenuPosition.y,
-                        zIndex: 1000
-                    }}
-                    onMouseLeave={() => setShowServerContextMenu(false)}
-                >
-                    <div className="context-menu-item" onClick={() => {
-                        setShowServerContextMenu(false);
-                        setShowServerIconModal(true);
-                    }}>
-                        Change Icon
-                    </div>
-                    <div className="context-menu-item danger" onClick={() => {
-                        setShowServerContextMenu(false);
-                        deleteServer(selectedServerId);
-                    }}>
-                        Delete Server
-                    </div>
-                </div>
-            )}
-
-            {/* Channel Context Menu */}
-            {showChannelContextMenu && (
-                <div 
-                    className="context-menu"
-                    style={{
-                        position: 'fixed',
-                        left: channelContextPosition.x,
-                        top: channelContextPosition.y,
-                        zIndex: 1000
-                    }}
-                    onMouseLeave={() => setShowChannelContextMenu(false)}
-                >
-                    <div className="context-menu-item" onClick={() => handleChannelContextAction('rename')}>
-                        Rename Channel
-                    </div>
-                    {hasPermission(auth.currentUser, 'delete_channels') && (
-                        <div className="context-menu-item danger" onClick={() => handleChannelContextAction('delete')}>
-                            Delete Channel
-                        </div>
-                    )}
-                </div>
-            )}
 
             {/* Channel Sidebar */}
             <div className="channel-sidebar">
@@ -1211,9 +744,9 @@ function DiscordLayout() {
                         <img 
                             className="server-header-logo" 
                             src="/SuperChat.png" 
-                            alt="Server Logo"
+                            alt="SuperChat Logo"
                         />
-                        <span>{selectedServer?.name || 'Select a Server'}</span>
+                        <span>SuperChat Server</span>
                     </div>
                 </div>
                 
@@ -1239,56 +772,34 @@ function DiscordLayout() {
                                         <span className="category-name">{category}</span>
                                         <span className="category-count">{categoryChannels.length}</span>
                         </div>
-                        <div 
-                            className="channel-list"
-                            onDragOver={handleChannelDragOver}
-                            onDrop={(e) => handleChannelDrop(e, category)}
-                        >
+                        <div className="channel-list">
                                         {categoryChannels.map(channel => (
                             <div 
                                                 key={channel.name}
-                                                className={`channel ${selectedChannel === channel.name ? 'active' : ''} ${selectedChannel !== channel.name && unreadChannels.has(channel.name) ? 'unread' : ''} ${selectedChannel !== channel.name && mentionedChannels.has(channel.name) ? 'mentioned' : ''} ${draggedChannel?.name === channel.name ? 'dragging' : ''}`}
+                                                className={`channel ${selectedChannel === channel.name ? 'active' : ''} ${selectedChannel !== channel.name && unreadChannels.has(channel.name) ? 'unread' : ''} ${selectedChannel !== channel.name && mentionedChannels.has(channel.name) ? 'mentioned' : ''}`}
                                                 onClick={() => setSelectedChannel(channel.name)}
-                                                onContextMenu={(e) => {
-                                                    e.preventDefault();
-                                                    setChannelContextPosition({ x: e.clientX, y: e.clientY });
-                                                    setSelectedChannelName(channel.name);
-                                                    setShowChannelContextMenu(true);
-                                                }}
-                                                draggable
-                                                onDragStart={(e) => handleChannelDragStart(e, channel)}
-                                                onDoubleClick={() => {
-                                                    setEditingChannel(channel.name);
-                                                    setEditingChannelName(channel.name);
-                                                }}
                             >
                                 <span className="channel-icon">#</span>
-                                                {editingChannel === channel.name ? (
-                                                    <input
-                                                        type="text"
-                                                        value={editingChannelName}
-                                                        onChange={(e) => setEditingChannelName(e.target.value)}
-                                                        onBlur={() => handleChannelRename(channel.name, editingChannelName)}
-                                                        onKeyDown={(e) => {
-                                                            if (e.key === 'Enter') {
-                                                                handleChannelRename(channel.name, editingChannelName);
-                                                            } else if (e.key === 'Escape') {
-                                                                setEditingChannel(null);
-                                                                setEditingChannelName('');
-                                                            }
-                                                        }}
-                                                        className="channel-rename-input"
-                                                        autoFocus
-                                                    />
-                                                ) : (
-                                                    <span className="channel-name">{channel.name}</span>
-                                                )}
+                                                <span className="channel-name">{channel.name}</span>
                                                 {selectedChannel !== channel.name && mentionedChannels.has(channel.name) && (
                                     <span className="mention-indicator">@</span>
                                 )}
                                                 {selectedChannel !== channel.name && unreadChannels.has(channel.name) && !mentionedChannels.has(channel.name) && (
                                     <span className="unread-indicator"></span>
                                 )}
+                                                {/* Delete Channel Button - Only for Admins */}
+                                                {hasPermission(auth.currentUser, 'delete_channels') && (
+                                                    <button 
+                                                        className="delete-channel-btn"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            deleteChannel(channel.name);
+                                                        }}
+                                                        title="Delete Channel"
+                                                    >
+                                                        ×
+                                                    </button>
+                                                )}
                             </div>
                                         ))}
                                     </div>
@@ -1418,9 +929,7 @@ function DiscordLayout() {
                 </div>
                 
                         <ChatRoom 
-                            key={`${selectedServer?.id}-${selectedChannel}`}
-                            channel={selectedChannel}
-                            selectedServer={selectedServer}
+                            channel={selectedChannel} 
                             onUserClick={(user, event) => {
                                 const rect = event.target.getBoundingClientRect();
                                 setPreviewPosition({ x: rect.right + 10, y: rect.top });
@@ -1591,86 +1100,35 @@ function DiscordLayout() {
                     onClose={() => setShowUserPreview(null)}
                 />
             )}
-
-            {/* Create Server Modal */}
-            {showCreateServer && (
-                <CreateServerModal 
-                    onClose={() => setShowCreateServer(false)}
-                    onCreateServer={createServer}
-                    serverName={newServerName}
-                    setServerName={setNewServerName}
-                    serverDescription={newServerDescription}
-                    setServerDescription={setNewServerDescription}
-                />
-            )}
-
-            {/* Server Icon Change Modal */}
-            {showServerIconModal && (
-                <ServerIconModal 
-                    onClose={() => setShowServerIconModal(false)}
-                    onIconChange={(icon) => handleServerIconChange(selectedServerId, icon)}
-                    serverIcon={newServerIcon}
-                    setServerIcon={setNewServerIcon}
-                />
-            )}
         </>
     );
 }
 
-function ChatRoom({ channel, selectedServer, onUserClick }) {
-    console.log('🔄 ChatRoom RENDERED - Channel:', channel, 'Server:', selectedServer?.name);
-    
+function ChatRoom({ channel, onUserClick }) {
     const dummy = useRef();
     const messagesContainerRef = useRef();
-    
-    // Create a stable query that doesn't change unless server actually changes
-    const query = React.useMemo(() => {
     const messagesRef = firestore.collection('messages');
-        console.log('🔍 CREATING QUERY - Server:', selectedServer?.name, 'ServerId:', selectedServer?.id);
-        
-        if (selectedServer?.id) {
-            // Query by serverId only, then sort in JavaScript to avoid index requirement
-            return messagesRef.where('serverId', '==', selectedServer.id).limit(50);
-        } else {
-            return messagesRef.orderBy('createdAt', 'desc').limit(30);
-        }
-    }, [selectedServer?.id]); // Only depend on server ID, not the entire server object
-
-    console.log('🔍 FIRESTORE QUERY - Server:', selectedServer?.name, 'ServerId:', selectedServer?.id);
+    
+    // Use proper query to get the most recent messages
+    // Order by createdAt descending to get newest first, then limit to 50
+    // Note: Firebase has a limit of 25 by default, but we can increase it
+    const query = messagesRef.orderBy('createdAt', 'desc').limit(50);
 
     const [messagesSnapshot, loading, error] = useCollection(query);
     
-    // Track component lifecycle
-    React.useEffect(() => {
-        console.log('🔄 ChatRoom MOUNTED - Channel:', channel, 'Server:', selectedServer?.name);
-        return () => {
-            console.log('🔄 ChatRoom UNMOUNTED - Channel:', channel, 'Server:', selectedServer?.name);
-        };
-    }, [channel, selectedServer?.name]);
+    // Convert snapshot to data with IDs
+    const messages = messagesSnapshot?.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+    })) || [];
     
-    console.log('🔍 FIRESTORE RESULT - Loading:', loading, 'Error:', error);
-    console.log('🔍 FIRESTORE RESULT - Snapshot docs:', messagesSnapshot?.docs?.length || 0);
-    
-    // Simple message processing - just get messages and sort them
-    const messages = React.useMemo(() => {
-        if (!messagesSnapshot?.docs) return [];
-        
-        return messagesSnapshot.docs
-            .map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }))
-            .sort((a, b) => {
-                // Simple sort: oldest first, newest last
-                const aTime = a.createdAt?.toDate?.() || new Date(0);
-                const bTime = b.createdAt?.toDate?.() || new Date(0);
-                return aTime.getTime() - bTime.getTime();
-            });
-    }, [messagesSnapshot]);
-    
-    
+    // Debug: Check if messages have IDs (reduced logging)
+    // React.useEffect(() => {
+    //     if (messages && messages.length > 0) {
+    //         console.log('🔍 Message IDs check:', messages.length, 'messages loaded');
+    //     }
+    // }, [messages]);
     const [formValue, setFormValue] = useState('');
-    const messagesRef = firestore.collection('messages');
 
     // Mention system state
     const [showMentionDropdown, setShowMentionDropdown] = useState(false);
@@ -1679,7 +1137,7 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
     const [selectedMentionIndex, setSelectedMentionIndex] = useState(0);
 
     // Get unique users from messages for mention autocomplete
-    const getUniqueUsers = React.useCallback(() => {
+    const getUniqueUsers = () => {
         if (!messages) return [];
         const userMap = new Map();
         messages.forEach(msg => {
@@ -1698,14 +1156,14 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
             }
         });
         return Array.from(userMap.values());
-    }, [messages]);
+    };
 
     const uniqueUsers = getUniqueUsers();
 
     // Function to get the correct avatar for mention dropdown users
-    const getMentionAvatar = React.useCallback((user) => {
-        // First check if user has a photoURL
-        if (user.photoURL && user.photoURL !== '') {
+    const getMentionAvatar = (user) => {
+        // First check if user has a valid photoURL (not empty string)
+        if (user.photoURL && user.photoURL.trim() !== '') {
             return user.photoURL;
         }
         
@@ -1716,15 +1174,12 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
         
         // Default avatar
         return 'https://api.adorable.io/avatars/23/abott@adorable.png';
-    }, []);
+    };
 
     // Filter users based on mention query
-    const filteredUsers = React.useMemo(() => {
-        if (!mentionQuery.trim()) return uniqueUsers;
-        return uniqueUsers.filter(user => 
+    const filteredUsers = uniqueUsers.filter(user => 
         user.displayName.toLowerCase().includes(mentionQuery.toLowerCase())
     );
-    }, [uniqueUsers, mentionQuery]);
 
     // Track last message ID to detect new messages
     const [lastMessageId, setLastMessageId] = useState(null);
@@ -1741,34 +1196,34 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
     // Auto-scroll to bottom when messages load or change (only if user is at bottom)
     React.useEffect(() => {
         if (messages && messages.length > 0 && !isUserScrolling) {
-            // Use requestAnimationFrame for better performance
-            requestAnimationFrame(() => {
+            // Small delay to ensure DOM is updated
+            setTimeout(() => {
                 if (dummy.current && isAtBottom()) {
                     dummy.current.scrollIntoView({ behavior: 'smooth' });
                 }
-            });
+            }, 100);
         }
     }, [messages, isUserScrolling]);
 
     // Auto-scroll to bottom when channel changes
     React.useEffect(() => {
         if (messages && messages.length > 0) {
-            requestAnimationFrame(() => {
+            setTimeout(() => {
                 if (dummy.current) {
                     dummy.current.scrollIntoView({ behavior: 'smooth' });
                 }
-            });
+            }, 100);
         }
     }, [channel]);
 
-    // Handle scroll events to detect user scrolling with throttling
-    const handleScroll = React.useCallback(() => {
+    // Handle scroll events to detect user scrolling
+    const handleScroll = () => {
         if (messagesContainerRef.current) {
             const atBottom = isAtBottom();
             setIsUserScrolling(!atBottom);
             setShowScrollToBottom(!atBottom);
         }
-    }, []);
+    };
 
     // Scroll to bottom function
     const scrollToBottom = () => {
@@ -1865,7 +1320,7 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
         }
     };
 
-    const sendMessage = React.useCallback(async (e) => {
+    const sendMessage = async (e) => {
         e.preventDefault();
 
         console.log('=== SENDING MESSAGE ===');
@@ -1910,7 +1365,6 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
             photoURL,
             displayName: displayNameWithCode,
             channel: channel || 'general',
-            serverId: selectedServer?.id || null,
             guestCode: guestCode || null,
             role: userRole.name,
             roleLevel: userRole.level,
@@ -1918,13 +1372,11 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
             roleIcon: userRole.icon
         };
 
-        console.log('📤 SENDING MESSAGE - Data:', messageData);
-        console.log('📤 SENDING MESSAGE - ServerId:', selectedServer?.id, 'Channel:', channel);
+        console.log('Message data to send:', messageData);
 
         try {
             const docRef = await messagesRef.add(messageData);
-            console.log('✅ MESSAGE SENT SUCCESSFULLY - ID:', docRef.id);
-            console.log('✅ MESSAGE SENT SUCCESSFULLY - Data:', messageData);
+            console.log('Message sent successfully with ID:', docRef.id);
             
             // Update user's last seen time
             await saveUserToFirestore(auth.currentUser, {
@@ -1933,48 +1385,40 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
                 guestCode: guestCode
             });
         } catch (error) {
-            console.error('❌ Error sending message:', error);
+            console.error('Error sending message:', error);
         }
 
         setFormValue('');
         setShowMentionDropdown(false);
         dummy.current.scrollIntoView({ behavior: 'smooth' });
-    }, [formValue, channel, selectedServer, auth.currentUser, messagesRef]);
+    }
 
-    // Filter messages for the current channel
-    const filteredMessages = React.useMemo(() => {
-        if (!messages || messages.length === 0) return [];
-        
-        return messages.filter(msg => {
+    // Filter messages for the current channel and reverse to show chronological order
+    const filteredMessages = messages ? messages
+        .filter(msg => {
             // If message has channel property, filter by it
             if (msg.channel) {
                 return msg.channel === channel;
             }
             // If message doesn't have channel property (old messages), show in general
             return channel === 'general';
-        });
-    }, [messages, channel]);
+        })
+        .reverse() // Reverse to show oldest to newest (chronological order)
+        : [];
 
     // console.log('Filtered messages count:', filteredMessages.length);
-
-    // Simple message rendering
-    const messageList = React.useMemo(() => {
-        if (filteredMessages.length === 0) {
-            return (
-                <div style={{color: '#8e9297', padding: '20px', textAlign: 'center'}}>
-                    <p>No messages in #{channel} yet</p>
-                    <p>Be the first to send a message!</p>
-                </div>
-            );
-        }
-        
-        return filteredMessages.map(msg => <ChatMessage key={msg.id} message={msg} onUserClick={onUserClick} />);
-    }, [filteredMessages, channel, onUserClick]);
 
     return (
         <>
             <div className="messages-container" ref={messagesContainerRef} onScroll={handleScroll}>
-                {messageList}
+                {filteredMessages.length > 0 ? (
+                    filteredMessages.map(msg => <ChatMessage key={msg.id} message={msg} onUserClick={onUserClick} />)
+                ) : (
+                    <div style={{color: '#8e9297', padding: '20px', textAlign: 'center'}}>
+                        <p>No messages in #{channel} yet</p>
+                        <p>Be the first to send a message!</p>
+                    </div>
+                )}
             <span ref={dummy}></span>
             </div>
 
@@ -2113,7 +1557,8 @@ const isUserMentioned = async (messageText, currentUser) => {
     return isMentioned;
 };
 
-const ChatMessage = React.memo(({ message, onUserClick }) => {
+function ChatMessage({ message, onUserClick }) {
+    // console.log('Rendering ChatMessage:', message);
     const { text, uid, photoURL, displayName, createdAt, guestCode, id, reactions, role, roleColor, roleIcon } = message;
     const messageClass = uid === auth.currentUser?.uid ? 'sent' : 'received';
     const [showReactionPicker, setShowReactionPicker] = useState(false);
@@ -2283,8 +1728,8 @@ const ChatMessage = React.memo(({ message, onUserClick }) => {
     };
 
     const getAvatar = () => {
-        // First check if message has a photoURL
-        if (photoURL && photoURL !== '') {
+        // First check if message has a valid photoURL (not empty string)
+        if (photoURL && photoURL.trim() !== '') {
             return photoURL;
         }
         
@@ -2464,14 +1909,14 @@ const ChatMessage = React.memo(({ message, onUserClick }) => {
             )}
         </div>
     )
-});
+}
 
 function UserProfileButton({ onClick }) {
     const [user] = useAuthState(auth);
     const [userProfile, setUserProfile] = useState(null);
     
     // Get user profile data
-    const getUserProfile = React.useCallback(async () => {
+    const getUserProfile = async () => {
         if (!user) return;
         
         try {
@@ -2484,15 +1929,8 @@ function UserProfileButton({ onClick }) {
                 }
             }
             
-            // Try userProfiles first, then fallback to users
-            let profileRef = firestore.collection('userProfiles').doc(documentId);
-            let profileDoc = await profileRef.get();
-            
-            if (!profileDoc.exists) {
-                // Fallback to users collection
-                profileRef = firestore.collection('users').doc(documentId);
-                profileDoc = await profileRef.get();
-            }
+            const profileRef = firestore.collection('userProfiles').doc(documentId);
+            const profileDoc = await profileRef.get();
             
             if (profileDoc.exists) {
                 setUserProfile(profileDoc.data());
@@ -2511,17 +1949,17 @@ function UserProfileButton({ onClick }) {
         } catch (error) {
             console.error('Error getting user profile:', error);
         }
-    }, [user]);
+    };
 
     React.useEffect(() => {
         getUserProfile();
-    }, [user, getUserProfile]);
+    }, [user]);
 
     // Listen for profile updates
     React.useEffect(() => {
         const unsubscribe = addProfileUpdateListener(getUserProfile);
         return unsubscribe;
-    }, [getUserProfile]);
+    }, []);
     
     const getDisplayName = () => {
         if (userProfile?.username) return userProfile.username;
@@ -2738,20 +2176,49 @@ function ProfileModal({ onClose }) {
                 }
             }
             
-            // Update user profile in both collections
+            // Update user profile
             const profileRef = firestore.collection('userProfiles').doc(documentId);
-            const userRef = firestore.collection('users').doc(documentId);
-            const profileData = {
+            await profileRef.set({
                 username: userProfile.username,
                 aboutMe: userProfile.aboutMe,
                 profilePicture: userProfile.profilePicture,
                 banner: userProfile.banner,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+            
+            // Also update the main users collection for members list
+            const usersRef = firestore.collection('users').doc(documentId);
+            
+            // For guest users, ensure we preserve the guestCode and handle photoURL properly
+            const currentUserRole = getUserRole(user);
+            const updateData = {
+                displayName: userProfile.username,
+                username: userProfile.username,
+                profilePicture: userProfile.profilePicture,
+                banner: userProfile.banner,
+                role: currentUserRole.name,
+                roleLevel: currentUserRole.level,
+                roleColor: currentUserRole.color,
+                roleIcon: currentUserRole.icon,
+                lastSeen: firebase.firestore.FieldValue.serverTimestamp(),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             };
             
-            // Save to both collections
-            await profileRef.set(profileData, { merge: true });
-            await userRef.set(profileData, { merge: true });
+            // Only set photoURL if there's a custom profile picture
+            if (userProfile.profilePicture && userProfile.profilePicture !== '') {
+                updateData.photoURL = userProfile.profilePicture;
+            }
+            
+            // For guest users, preserve the guestCode
+            if (user.isAnonymous) {
+                const guestCode = localStorage.getItem('guestCode');
+                if (guestCode) {
+                    updateData.guestCode = guestCode;
+                    updateData.isAnonymous = true;
+                }
+            }
+            
+            await usersRef.set(updateData, { merge: true });
             
             // Update messages with new display name
             const messagesRef = firestore.collection('messages');
@@ -2770,10 +2237,8 @@ function ProfileModal({ onClose }) {
                     roleIcon: messageUserRole.icon
                 };
                 
-                // Only update photoURL if there's a custom profile picture
-                if (userProfile.profilePicture && userProfile.profilePicture !== '') {
-                    messageUpdate.photoURL = userProfile.profilePicture;
-                }
+                // Always update photoURL with current profile picture (even if empty)
+                messageUpdate.photoURL = userProfile.profilePicture || '';
                 
                 // For guest users, ensure guestCode is preserved
                 if (user.isAnonymous) {
@@ -3147,224 +2612,6 @@ function SignOut() {
             </svg>
         </button>
     )
-}
-
-function CreateServerModal({ onClose, onCreateServer, serverName, setServerName, serverDescription, setServerDescription }) {
-    const modalRef = useRef(null);
-    
-    // Close modal when clicking outside
-    React.useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (modalRef.current && !modalRef.current.contains(event.target)) {
-                onClose();
-            }
-        };
-        
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-        };
-    }, [onClose]);
-
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        onCreateServer();
-    };
-
-    return (
-        <div className="modal-overlay">
-            <div className="modal-content create-server-modal" ref={modalRef}>
-                <div className="modal-header">
-                    <h2>Create Server</h2>
-                    <button className="modal-close" onClick={onClose}>×</button>
-                </div>
-                
-                <form onSubmit={handleSubmit} className="create-server-form">
-                    <div className="form-group">
-                        <label htmlFor="serverName">Server Name *</label>
-                        <input
-                            type="text"
-                            id="serverName"
-                            value={serverName}
-                            onChange={(e) => setServerName(e.target.value)}
-                            placeholder="Enter server name"
-                            maxLength={50}
-                            required
-                        />
-                    </div>
-                    
-                    <div className="form-group">
-                        <label htmlFor="serverDescription">Description (Optional)</label>
-                        <textarea
-                            id="serverDescription"
-                            value={serverDescription}
-                            onChange={(e) => setServerDescription(e.target.value)}
-                            placeholder="Enter server description"
-                            maxLength={200}
-                            rows={3}
-                        />
-                    </div>
-                    
-                    <div className="modal-actions">
-                        <button type="button" className="cancel-btn" onClick={onClose}>
-                            Cancel
-                        </button>
-                        <button type="submit" className="create-btn">
-                            Create Server
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    );
-}
-
-function ServerIconModal({ onClose, onIconChange, serverIcon, setServerIcon }) {
-    const modalRef = useRef(null);
-    const fileInputRef = useRef(null);
-    const [iconType, setIconType] = useState('text'); // 'text' or 'image'
-    const [previewImage, setPreviewImage] = useState(null);
-    
-    // Close modal when clicking outside
-    React.useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (modalRef.current && !modalRef.current.contains(event.target)) {
-                onClose();
-            }
-        };
-        
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-        };
-    }, [onClose]);
-
-    const handleFileChange = (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            // Compress and convert to base64
-            compressImage(file, 100, 100, 0.8).then(compressedBase64 => {
-                setServerIcon(compressedBase64);
-                setPreviewImage(compressedBase64);
-            }).catch(error => {
-                console.error('Error compressing image:', error);
-                alert('Error processing image. Please try again.');
-            });
-        }
-    };
-
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        if (iconType === 'text' && !serverIcon.trim()) {
-            alert('Please enter an icon');
-            return;
-        }
-        if (iconType === 'image' && !serverIcon) {
-            alert('Please select an image');
-            return;
-        }
-        onIconChange(serverIcon);
-    };
-
-    const clearImage = () => {
-        setServerIcon('');
-        setPreviewImage(null);
-        if (fileInputRef.current) {
-            fileInputRef.current.value = '';
-        }
-    };
-
-    return (
-        <div className="modal-overlay">
-            <div className="modal-content create-server-modal" ref={modalRef}>
-                <div className="modal-header">
-                    <h2>Change Server Icon</h2>
-                    <button className="modal-close" onClick={onClose}>×</button>
-                </div>
-                
-                <form onSubmit={handleSubmit} className="create-server-form">
-                    <div className="form-group">
-                        <label>Icon Type</label>
-                        <div className="icon-type-selector">
-                            <button
-                                type="button"
-                                className={`icon-type-btn ${iconType === 'text' ? 'active' : ''}`}
-                                onClick={() => setIconType('text')}
-                            >
-                                Text/Emoji
-                            </button>
-                            <button
-                                type="button"
-                                className={`icon-type-btn ${iconType === 'image' ? 'active' : ''}`}
-                                onClick={() => setIconType('image')}
-                            >
-                                Image
-                            </button>
-                        </div>
-                    </div>
-
-                    {iconType === 'text' ? (
-                        <div className="form-group">
-                            <label htmlFor="serverIcon">Server Icon *</label>
-                            <input
-                                type="text"
-                                id="serverIcon"
-                                value={serverIcon}
-                                onChange={(e) => setServerIcon(e.target.value)}
-                                placeholder="Enter emoji or text (e.g., 🎮, A, 1)"
-                                maxLength={2}
-                                required
-                            />
-                            <small className="form-help">Enter a single emoji or 1-2 characters</small>
-                        </div>
-                    ) : (
-                        <div className="form-group">
-                            <label htmlFor="serverIconFile">Server Icon Image *</label>
-                            <div className="image-upload-area">
-                                <input
-                                    ref={fileInputRef}
-                                    type="file"
-                                    id="serverIconFile"
-                                    accept="image/*"
-                                    onChange={handleFileChange}
-                                    style={{ display: 'none' }}
-                                />
-                                <button
-                                    type="button"
-                                    className="file-upload-btn"
-                                    onClick={() => fileInputRef.current?.click()}
-                                >
-                                    Choose Image
-                                </button>
-                                {previewImage && (
-                                    <div className="image-preview">
-                                        <img src={previewImage} alt="Preview" />
-                                        <button
-                                            type="button"
-                                            className="clear-image-btn"
-                                            onClick={clearImage}
-                                        >
-                                            ×
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-                            <small className="form-help">Upload an image (max 100x100px, will be resized)</small>
-                        </div>
-                    )}
-                    
-                    <div className="modal-actions">
-                        <button type="button" className="cancel-btn" onClick={onClose}>
-                            Cancel
-                        </button>
-                        <button type="submit" className="create-btn">
-                            Change Icon
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    );
 }
 
 export default App;

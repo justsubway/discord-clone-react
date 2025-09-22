@@ -60,20 +60,8 @@ html, body {
 }
 
 .server-icon.active {
-  background-color: #36393f;
-  border: 2px solid #5865f2;
+  background-color: #5865f2;
   border-radius: 16px;
-}
-
-.server-icon.add-server {
-  background-color: #43b581;
-  color: white;
-  font-size: 24px;
-  font-weight: bold;
-}
-
-.server-icon.add-server:hover {
-  background-color: #3aa374;
 }
 
 /* Channel Sidebar */
@@ -316,10 +304,9 @@ html, body {
 
 /* Message Input */
 .message-input-container {
-  padding: 20px;
+  padding: 16px;
   background-color: #36393f;
   position: relative;
-  border-top: 1px solid #2f3136;
 }
 
 .message-input-form {
@@ -328,9 +315,8 @@ html, body {
   background-color: #40444b;
   border-radius: 8px;
   padding: 0 16px;
-  min-height: 60px;
+  min-height: 44px;
   position: relative;
-  border: 1px solid #2f3136;
 }
 
 .input-wrapper {
@@ -348,9 +334,8 @@ html, body {
   line-height: 1.375;
   resize: none;
   max-height: 200px;
-  min-height: 40px;
-  padding: 12px 0;
-  width: 100%;
+  min-height: 20px;
+  padding: 10px 0;
 }
 
 .message-input::placeholder {
@@ -1036,346 +1021,6 @@ html, body {
 
 .p-4 {
   padding: 16px;
-}
-
-/* Create Server Modal */
-.create-server-modal {
-  max-width: 600px;
-  width: 90vw;
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 1001;
-  background-color: #36393f;
-  border: 1px solid #202225;
-  border-radius: 8px;
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5);
-}
-
-.create-server-form {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  padding: 24px;
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.form-group label {
-  font-size: 14px;
-  font-weight: 600;
-  color: #b9bbbe;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-}
-
-.form-group input,
-.form-group textarea {
-  background-color: #40444b;
-  border: 1px solid #202225;
-  border-radius: 8px;
-  padding: 14px 16px;
-  color: #dcddde;
-  font-size: 16px;
-  font-family: inherit;
-  transition: border-color 0.2s ease;
-}
-
-.form-group input:focus,
-.form-group textarea:focus {
-  outline: none;
-  border-color: #5865f2;
-}
-
-.form-group textarea {
-  resize: vertical;
-  min-height: 100px;
-}
-
-.modal-actions {
-  display: flex;
-  gap: 12px;
-  justify-content: flex-end;
-  margin-top: 10px;
-}
-
-.cancel-btn {
-  background-color: transparent;
-  border: 1px solid #5865f2;
-  color: #5865f2;
-  padding: 10px 20px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  transition: all 0.2s ease;
-}
-
-.cancel-btn:hover {
-  background-color: #5865f2;
-  color: white;
-}
-
-.create-btn {
-  background-color: #5865f2;
-  border: none;
-  color: white;
-  padding: 10px 20px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  transition: all 0.2s ease;
-}
-
-.create-btn:hover {
-  background-color: #4752c4;
-}
-
-.create-btn:disabled {
-  background-color: #4f545c;
-  cursor: not-allowed;
-}
-
-/* Context Menu */
-.context-menu {
-  background-color: #2f3136;
-  border: 1px solid #202225;
-  border-radius: 8px;
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
-  padding: 4px 0;
-  min-width: 150px;
-}
-
-.context-menu-item {
-  padding: 8px 16px;
-  color: #dcddde;
-  cursor: pointer;
-  font-size: 14px;
-  transition: background-color 0.2s ease;
-}
-
-.context-menu-item:hover {
-  background-color: #3c3f44;
-}
-
-.context-menu-item.danger {
-  color: #f04747;
-}
-
-.context-menu-item.danger:hover {
-  background-color: #f04747;
-  color: white;
-}
-
-/* Channel Drag and Drop */
-.channel.dragging {
-  opacity: 0.5;
-  transform: rotate(5deg);
-}
-
-.channel-list {
-  min-height: 20px;
-  transition: background-color 0.2s ease;
-}
-
-.channel-list.drag-over {
-  background-color: #3c3f44;
-  border-radius: 4px;
-}
-
-/* Channel Rename Input */
-.channel-rename-input {
-  background-color: transparent;
-  border: 1px solid #5865f2;
-  border-radius: 4px;
-  color: #dcddde;
-  font-size: 16px;
-  font-family: inherit;
-  padding: 2px 6px;
-  outline: none;
-  width: 100%;
-  max-width: 150px;
-}
-
-.channel-rename-input:focus {
-  background-color: #40444b;
-}
-
-/* Form Help Text */
-.form-help {
-  font-size: 12px;
-  color: #8e9297;
-  margin-top: 4px;
-}
-
-/* Modal Close Button */
-.modal-close {
-  background: none;
-  border: none;
-  font-size: 20px;
-  color: #b9bbbe;
-  cursor: pointer;
-  padding: 4px;
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  transition: all 0.2s ease;
-}
-
-.modal-close:hover {
-  color: #dcddde;
-  background-color: #4f545c;
-}
-
-/* Icon Type Selector */
-.icon-type-selector {
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-.icon-type-btn {
-  flex: 1;
-  padding: 8px 16px;
-  background-color: #40444b;
-  border: 1px solid #202225;
-  border-radius: 4px;
-  color: #dcddde;
-  cursor: pointer;
-  font-size: 14px;
-  transition: all 0.2s ease;
-}
-
-.icon-type-btn:hover {
-  background-color: #4f545c;
-}
-
-.icon-type-btn.active {
-  background-color: #5865f2;
-  border-color: #5865f2;
-  color: white;
-}
-
-/* Image Upload Area */
-.image-upload-area {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  align-items: center;
-}
-
-.file-upload-btn {
-  padding: 12px 24px;
-  background-color: #5865f2;
-  border: none;
-  border-radius: 4px;
-  color: white;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  transition: all 0.2s ease;
-}
-
-.file-upload-btn:hover {
-  background-color: #4752c4;
-}
-
-.image-preview {
-  position: relative;
-  display: inline-block;
-}
-
-.image-preview img {
-  width: 64px;
-  height: 64px;
-  object-fit: cover;
-  border-radius: 50%;
-  border: 2px solid #5865f2;
-}
-
-.clear-image-btn {
-  position: absolute;
-  top: -8px;
-  right: -8px;
-  width: 20px;
-  height: 20px;
-  background-color: #f04747;
-  border: none;
-  border-radius: 50%;
-  color: white;
-  cursor: pointer;
-  font-size: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-}
-
-.clear-image-btn:hover {
-  background-color: #d73a49;
-}
-
-/* Server Icon Image */
-.server-icon-image {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  border-radius: 50%;
-}
-
-/* Performance optimizations */
-* {
-  box-sizing: border-box;
-}
-
-.messages-container {
-  will-change: scroll-position;
-  contain: layout style paint;
-}
-
-.channel {
-  contain: layout style;
-}
-
-.message {
-  contain: layout style;
-}
-
-/* Optimize image rendering */
-img {
-  image-rendering: -webkit-optimize-contrast;
-  image-rendering: crisp-edges;
-}
-
-/* Reduce repaints on hover */
-.server-icon:hover,
-.channel:hover {
-  transform: translateZ(0);
-  backface-visibility: hidden;
-}
-
-/* Optimize scrolling */
-.messages-container {
-  -webkit-overflow-scrolling: touch;
-  scroll-behavior: smooth;
-}
-
-/* Reduce layout thrashing */
-.mention-dropdown {
-  contain: layout style paint;
-}
-
-.context-menu {
-  contain: layout style paint;
 }
 
 .text-sm {
